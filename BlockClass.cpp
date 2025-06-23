@@ -46,10 +46,10 @@ void Block::recognize() {
             return;
         }
 
-        llvm::SmallVector<llvm::BasicBlock*, 4> latches;
-        L->getExitBlocks(latches);
-        for (llvm::BasicBlock* latch : latches) {
-            if (latch == el) {
+        llvm::SmallVector<llvm::BasicBlock*, 4> exists;
+        L->getExitBlocks(exists);
+        for (llvm::BasicBlock* exit : exists) {
+            if (exit == el) {
                 type = BlockTypology::LoopExit;
                 return;
             }
@@ -107,8 +107,8 @@ llvm::Loop* Block::getLoop() {
     return ownedByLoop;
 } 
 
-Scope* Block::emplaceScope(Scope* parent, bool isLoopScope) {
-    scope = std::make_unique<Scope>(parent, isLoopScope);
+Scope* Block::emplaceScope(Scope* parent) {
+    scope = std::make_unique<Scope>(parent);
     return scope.get();
 }
 
@@ -175,4 +175,22 @@ void Block::setIterBounds(std::pair<u_int64_t, u_int64_t> IB) {
 
 std::pair<u_int64_t, u_int64_t> Block::getIterBounds() {
     return bounds;
+}
+
+Block* Block::findNearestDominatingParent() const {
+    // Prendo il DominatorTree dal FunctionAnalyzer (supponendo sia esposto)
+    auto &DT = owner->getDominatorTree();
+
+    // Nodo DT del BB corrente
+    auto *node = DT.getNode(el);
+    if (!node) return nullptr;
+
+    // Risalgo verso l'IDom (immediate dominator) finché trovo un Block* wrappato
+    while ((node = node->getIDom())) {
+        llvm::BasicBlock *domBB = node->getBlock();
+        if (Block* parent = owner->getBlockByLLVMBasicBlock(domBB)) {
+            return parent;
+        }
+    }
+    return nullptr;
 }

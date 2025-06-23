@@ -18,7 +18,10 @@ add_llvm_pass_plugin (
     InstructionAnalyzer.cpp
     
     VRAPass.h 
-    VRAPass.cpp 
+    VRAPass.cpp
+
+    BlockVisitor.hpp
+    RangePropagationVisitor.cpp
     
     Utils.hpp
     Utils.cpp)

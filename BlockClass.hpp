@@ -9,6 +9,9 @@
 
 using namespace llvm;
 
+class FunctionAnalyzer;
+class BlockVisitor;
+
 enum BlockTypology {
     StandardFork,       // fork with classic join block later without outgoing from current loop
     InterLoopFork,      // fork within loop where join point is outside of its loop (break keyword)
@@ -61,7 +64,7 @@ public:
      /**
      * Create, initialize and add scope of the block
      */
-    Scope* emplaceScope(Scope* parent, bool isLoopScope);
+    Scope* emplaceScope(Scope* parent);
 
     /**
      * Set the initial number of latches to analyze before terminate loop analysis
@@ -108,6 +111,8 @@ public:
     void setIterBounds(std::pair<u_int64_t, u_int64_t> IB);
 
     std::pair<u_int64_t, u_int64_t> getIterBounds();
+
+    Block* findNearestDominatingParent() const;
 
     Block(BasicBlock* el, FunctionAnalyzer* owner);
 

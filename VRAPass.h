@@ -17,10 +17,14 @@ namespace llvm {
 
         void addFunctionScope(std::unique_ptr<Scope> fnScope);
 
+        Scope* getGlobalScope();
+
+        ModuleAnalysisManager* getMAM();
+
     protected:
 
     
-        void VRAPass::setGlobalScope();
+        void setGlobalScope();
 
         void processModule();
 

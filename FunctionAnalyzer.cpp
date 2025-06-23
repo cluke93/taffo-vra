@@ -16,7 +16,7 @@ FunctionAnalyzer::FunctionAnalyzer(Function* el, llvm::VRAPass* vra_pass) : el(e
 void FunctionAnalyzer::analyze() {
 
     Scope* globalScope = getPass()->getGlobalScope();
-    scope = std::make_unique<Scope>(globalScope, false);
+    scope = std::make_unique<Scope>(globalScope);
 
     // recuperare gli argomenti col loro range
 
@@ -132,7 +132,7 @@ void FunctionAnalyzer::initLoop(Block* header) {
         parentScope = parentBlock->getScope();
     }
     
-    Scope* scope = header->emplaceScope(parentScope, false);
+    Scope* scope = header->emplaceScope(parentScope);
 
     setAnalysisBound();
 
@@ -179,7 +179,7 @@ void FunctionAnalyzer::initStandardFork(Block* fork) {
         parentScope = parentBlock->getScope();
     }
     
-    Scope* scope = fork->emplaceScope(parentScope, false);
+    Scope* scope = fork->emplaceScope(parentScope);
 
     setAnalysisBound();
 
@@ -245,7 +245,7 @@ void FunctionAnalyzer::processSimpleBlock(Block* block) {
         parentScope = parentBlock->getScope();
     }
     
-    Scope* scope = block->emplaceScope(parentScope, false);
+    Scope* scope = block->emplaceScope(parentScope);
 
     setAnalysisBound();
 
@@ -281,7 +281,7 @@ void FunctionAnalyzer::processLoopLatch(Block* latch) {
         parentScope = parentBlock->getScope();
     }
     
-    Scope* scope = latch->emplaceScope(parentScope, false);
+    Scope* scope = latch->emplaceScope(parentScope);
 
     setAnalysisBound();
 
@@ -330,7 +330,7 @@ void FunctionAnalyzer::handleStandardMerge(Block* merge) {
         std::unique_ptr<Scope> tempParentScopeHolder = nullptr;
         for (llvm::BasicBlock *pred : llvm::predecessors(merge->getLLVMBasicBlock())) {
             if (tempParentScopeHolder == nullptr) {
-                std::make_unique<Scope>(getBlockByLLVMBasicBlock(pred)->getScope(), false);
+                std::make_unique<Scope>(getBlockByLLVMBasicBlock(pred)->getScope());
             } else {
                 tempParentScopeHolder->mergeWith(getBlockByLLVMBasicBlock(pred)->getScope());
             }
@@ -338,7 +338,7 @@ void FunctionAnalyzer::handleStandardMerge(Block* merge) {
         parentScope = tempParentScopeHolder.get();
     }
 
-    Scope* scope = merge->emplaceScope(parentScope, false);
+    Scope* scope = merge->emplaceScope(parentScope);
 
     setAnalysisBound();
 
@@ -415,7 +415,7 @@ void FunctionAnalyzer::handleLoopExit(Block* exit) {
         std::unique_ptr<Scope> tempParentScopeHolder = nullptr;
         for (llvm::BasicBlock *pred : llvm::predecessors(exit->getLLVMBasicBlock())) {
             if (tempParentScopeHolder == nullptr) {
-                std::make_unique<Scope>(getBlockByLLVMBasicBlock(pred)->getScope(), false);
+                std::make_unique<Scope>(getBlockByLLVMBasicBlock(pred)->getScope());
             } else {
                 tempParentScopeHolder->mergeWith(getBlockByLLVMBasicBlock(pred)->getScope());
             }
@@ -423,7 +423,7 @@ void FunctionAnalyzer::handleLoopExit(Block* exit) {
         parentScope = tempParentScopeHolder.get();
     }
 
-    Scope* scope = exit->emplaceScope(parentScope, false);
+    Scope* scope = exit->emplaceScope(parentScope);
 
     setAnalysisBound();
 

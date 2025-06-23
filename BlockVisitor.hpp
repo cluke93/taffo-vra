@@ -5,7 +5,7 @@
 
 #include "BlockClass.hpp"
 
-using namespace llvm;
+class Block;
 
 class BlockVisitor {
 public:

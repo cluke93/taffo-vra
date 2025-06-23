@@ -37,7 +37,7 @@ namespace llvm
 
     void VRAPass::setGlobalScope() {
 
-        auto global = std::make_unique<Scope>(nullptr, false);
+        auto global = std::make_unique<Scope>(nullptr);
 
         for (auto& gv : M->globals()) {
             std::string name = gv.getName().str();
@@ -66,6 +66,14 @@ namespace llvm
         globalScope = std::move(global);
     }
     
+}
+
+Scope* VRAPass::getGlobalScope() {
+    return globalScope.get();
+}
+
+ModuleAnalysisManager* VRAPass::getMAM() {
+    return MAM;
 }
 
 #undef DEBUG_TYPE
