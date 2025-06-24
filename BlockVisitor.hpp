@@ -24,8 +24,6 @@ public:
     virtual void visitStandardMerge(Block* join) = 0;
     
     virtual void visitSimple(Block* simple) = 0;
-
-    virtual void visitReturnBlock(Block* ret) = 0;
 };
 
 #endif

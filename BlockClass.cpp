@@ -10,11 +10,6 @@ std::string Block::getName() const {
 void Block::recognize() {
     errs() << "recognize()\n";
 
-    bool isExitBlock = false;
-
-    // quelli particolari sono gli Exitblock che possono cambiare o meno la scelta precedente (stardard o inter fork)
-
-
     if (llvm::Loop* L = getOwner()->getLoopInfo()->getLoopFor(el)) {
         ownedByLoop = L;
 
@@ -58,7 +53,7 @@ void Block::recognize() {
     }
 
     Instruction* term = el->getTerminator();
-    if (auto* br = dyn_cast<BranchInst>(term)) {
+    if (dyn_cast<BranchInst>(term)) {
         type = BlockTypology::StandardFork;
         return;
     } else if (dyn_cast<SwitchInst>(term)) {

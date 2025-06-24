@@ -4,6 +4,7 @@
 #include "BlockClass.hpp"
 #include "llvm/IR/Dominators.h"
 
+#include <map>
 #include "queue"
 #include <algorithm>
 
@@ -57,10 +58,6 @@ public:
 
     void processSimpleBlock(Block* block);
 
-    void handleReturnBlock(Block* ret);
-
-
-
     void analyze();
 
     bool contains(BasicBlock* bb) const;
@@ -104,9 +101,25 @@ public:
 
     Block* getForkFromBreadcrumb() const;
 
+    Block* getPredecessorForkFromBreadcrumb() const;
+
     void setAnalysisBound();
 
+    /// Restituisce i range degli argomenti passati ad ogni CallInst
+    const std::map<llvm::CallInst*, std::vector<Range>>& getCallArgRanges() const {
+        return callArgRanges;
+    }
+
     FunctionAnalyzer (Function* el, llvm::VRAPass* vra_pass);
+
+protected:
+
+    void handleBlockTerminator(Block* bb);
+
+    void handleReturn(ReturnInst* ret);
+
+
+
 
 private:
 
@@ -164,6 +177,9 @@ private:
      * Reference of instruction analyzer
      */
     std::shared_ptr<InstructionAnalyzer> IA;
+
+    /// Mappa ogni CallInst ai Range dei suoi argomenti
+    std::map<llvm::CallInst*, std::vector<Range>> callArgRanges;
 
 };
 

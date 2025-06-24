@@ -26,7 +26,10 @@ namespace llvm
             // if (!F.empty() && (PropagateAll || TaffoInfo::getInstance().isStartingPoint(F))) {
 
                 FunctionAnalyzer FAN = FunctionAnalyzer(&F, this);
+
                 FAN.analyze();
+                emplaceFunctionScope(FAN.getName(), FAN.getScope());
+
                 FoundVisitableFunction = true;
             // }
         }
@@ -74,6 +77,15 @@ Scope* VRAPass::getGlobalScope() {
 
 ModuleAnalysisManager* VRAPass::getMAM() {
     return MAM;
+}
+
+void VRAPass::emplaceFunctionScope(const std::string& fname, Scope* fscope) {
+    functionScopes.emplace(fname, fscope);
+}
+
+Scope* VRAPass::getFunctionScope(const std::string& fname) const {
+    auto it = functionScopes.find(fname);
+    return it == functionScopes.end() ? nullptr : it->second;
 }
 
 #undef DEBUG_TYPE

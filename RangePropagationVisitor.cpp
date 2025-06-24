@@ -46,10 +46,6 @@ public:
         // default successor enqueue
         owner->processSimpleBlock(fork);
     }
-
-    void visitReturnBlock(Block* ret) override {
-        owner->handleReturnBlock(ret);
-    }
 };
 
 #endif

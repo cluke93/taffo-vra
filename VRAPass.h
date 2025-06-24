@@ -15,7 +15,9 @@ namespace llvm {
 
         PreservedAnalyses run(Module& M, ModuleAnalysisManager& AM);
 
-        void addFunctionScope(std::unique_ptr<Scope> fnScope);
+        void emplaceFunctionScope(const std::string& fname, Scope* fscope);
+
+        Scope* getFunctionScope(const std::string& fname) const;
 
         Scope* getGlobalScope();
 
@@ -35,7 +37,7 @@ namespace llvm {
         std::unique_ptr<Scope> globalScope;
 
         /// @brief Scope for each function computed by VRA
-        std::vector<std::unique_ptr<Scope>> functionScopes;
+        std::unordered_map<std::string, Scope*> functionScopes;
 
         /// Module of this pass
         Module* M;

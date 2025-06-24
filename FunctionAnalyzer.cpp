@@ -121,9 +121,12 @@ void FunctionAnalyzer::popBreadcrumb() {
 
 /**
  * Gestione loop header
+ * Inizia sempre con un predecessore
+ * Finisce con branch tra inner loop block ed exit block
+ * No istruzioni di return previste
  */
 void FunctionAnalyzer::initLoop(Block* header) {
-    errs() << "initLoop(exit: " << header->getName() << ")";
+    errs() << "initLoop(header: " << header->getName() << ")";
     
     header->setNumLoopLatches(header->getLoop());
 
@@ -132,7 +135,7 @@ void FunctionAnalyzer::initLoop(Block* header) {
         parentScope = parentBlock->getScope();
     }
     
-    Scope* scope = header->emplaceScope(parentScope);
+    header->emplaceScope(parentScope);
 
     setAnalysisBound();
 
@@ -169,8 +172,14 @@ void FunctionAnalyzer::initLoop(Block* header) {
 
 }
 
+/**
+ * Gestione standard fork
+ * Può iniziare con un predecessore
+ * Finisce con branch
+ * No istruzioni di return previste
+ */
 void FunctionAnalyzer::initStandardFork(Block* fork) {
-    errs() << "initStandardFork(exit: " << fork->getName() << ")";
+    errs() << "initStandardFork(fork: " << fork->getName() << ")";
 
     BasicBlock* el = fork->getLLVMBasicBlock();
 
@@ -179,7 +188,7 @@ void FunctionAnalyzer::initStandardFork(Block* fork) {
         parentScope = parentBlock->getScope();
     }
     
-    Scope* scope = fork->emplaceScope(parentScope);
+    fork->emplaceScope(parentScope);
 
     setAnalysisBound();
 
@@ -211,11 +220,10 @@ void FunctionAnalyzer::initStandardFork(Block* fork) {
                 enqueueBlock(br->getSuccessor(i));
                 num_branches++;
             } else {
-                // il successore esce dal loop corrente?
-                // il fork diventa InterLoop (ne basta uno), non accodo il blocco (sarà analizzato con i loop exit)
-                //TODO: break dentro fork innestati
+                // il successore esce dal loop corrente
 
-                fork->setType(BlockTypology::InterLoopFork);
+                Block* predFork = getPredecessorForkFromBreadcrumb();
+                predFork->setType(BlockTypology::InterLoopFork);
             }
         }
         
@@ -236,7 +244,7 @@ void FunctionAnalyzer::initStandardFork(Block* fork) {
 }
 
 void FunctionAnalyzer::processSimpleBlock(Block* block) {
-    errs() << "processSimpleBlock(exit: " << block->getName() << ")";
+    errs() << "processSimpleBlock(block: " << block->getName() << ")";
 
     BasicBlock* el = block->getLLVMBasicBlock();
 
@@ -245,7 +253,7 @@ void FunctionAnalyzer::processSimpleBlock(Block* block) {
         parentScope = parentBlock->getScope();
     }
     
-    Scope* scope = block->emplaceScope(parentScope);
+    block->emplaceScope(parentScope);
 
     setAnalysisBound();
 
@@ -264,11 +272,18 @@ void FunctionAnalyzer::processSimpleBlock(Block* block) {
         if (isNotBreakLoopKeyword(el, succ)) {
             enqueueBlock(br->getSuccessor(0));
         }
+    } else if (auto* ret = dyn_cast<ReturnInst>(term)) {
+        
+        // se siamo immediatamente in un fork rimuovi un branch
+        Block* fork = getPredecessorForkFromBreadcrumb();
+        if (fork) fork->decrRemainingBranches();
+
+        handleReturn(ret);
     }
 }
 
 void FunctionAnalyzer::processLoopLatch(Block* latch) {
-    errs() << "processLoopLatch(exit: " << latch->getName() << ")";
+    errs() << "processLoopLatch(latch: " << latch->getName() << ")";
 
     // risalire al breadcrumb del loop corrente
     Block* loopHeaderBlock = getLoopHeaderFromBreadcrumb();
@@ -313,7 +328,7 @@ void FunctionAnalyzer::processLoopLatch(Block* latch) {
 }
 
 void FunctionAnalyzer::handleStandardMerge(Block* merge) {
-    errs() << "handleStandardMerge(exit: " << merge->getName() << ")";
+    errs() << "handleStandardMerge(merge: " << merge->getName() << ")";
 
     Block* forkBlock = getForkFromBreadcrumb();
     forkBlock->decrRemainingBranches();
@@ -338,7 +353,7 @@ void FunctionAnalyzer::handleStandardMerge(Block* merge) {
         parentScope = tempParentScopeHolder.get();
     }
 
-    Scope* scope = merge->emplaceScope(parentScope);
+    merge->emplaceScope(parentScope);
 
     setAnalysisBound();
 
@@ -357,49 +372,7 @@ void FunctionAnalyzer::handleStandardMerge(Block* merge) {
     // pulisci la breadcrumb ora che il fork è terminato
     popBreadcrumb();
 
-    //FINAL CHECK: IS THIS MERGE BLOCK ALSO THE BEGIN OF ANOTHER FORK?
-    short num_branches = 0;
-
-    Instruction* term = el->getTerminator();
-    if (auto* br = dyn_cast<BranchInst>(term)) {
-        
-        if (br->getNumSuccessors() == 1) {
-            // NON è l'inizio di un altro fork, accodo e termino qui
-            enqueueBlock(br->getSuccessor(0));
-            return;
-        } else {
-            for (unsigned int i = 0; i<br->getNumSuccessors(); i++) {
-                auto* succ = br->getSuccessor(i);
-
-                // il successore non esce dal loop corrente
-                if (isNotBreakLoopKeyword(el, succ)) {
-                    enqueueBlock(br->getSuccessor(i));
-                    num_branches++;
-                } else {
-                    // il successore esce dal loop corrente?
-                    // il fork diventa InterLoop (ne basta uno), non accodo il blocco (sarà analizzato con i loop exit)
-                    //TODO: break dentro fork innestati
-
-                    merge->setType(BlockTypology::InterLoopFork);
-                }
-            }
-        }
-    } else if (auto* sw = dyn_cast<SwitchInst>(term)) {
-        
-        for (unsigned int i = 1; i <= sw->getNumCases(); i++) {
-            enqueueBlock(br->getSuccessor(i));
-            num_branches++;
-        }
-
-        //last op is default
-        enqueueBlock(br->getSuccessor(0));
-        num_branches++;
-    }
-
-    // qui arrivo solo se è l'inizio di un altro fork, quindi cambio il tipo di blocco (l'indicazione precedente del merge non serve più)
-    merge->setNumBranches(num_branches);
-    merge->setType(BlockTypology::StandardFork);
-    emplaceBreadcrumb(AggregationType::Fork, merge);
+    handleBlockTerminator(merge);
 }
 
 void FunctionAnalyzer::handleLoopExit(Block* exit) {
@@ -423,11 +396,10 @@ void FunctionAnalyzer::handleLoopExit(Block* exit) {
         parentScope = tempParentScopeHolder.get();
     }
 
-    Scope* scope = exit->emplaceScope(parentScope);
+    exit->emplaceScope(parentScope);
 
     setAnalysisBound();
 
-    //TODO: restore dei min/max iter precedenti al loop
     IA->loadBlock(exit);
 
     for (Instruction& I : *el) {
@@ -440,54 +412,7 @@ void FunctionAnalyzer::handleLoopExit(Block* exit) {
 
     IA->freeBlock();
 
-    //FINAL CHECK: IS THIS EXIT BLOCK ALSO THE BEGIN OF ANOTHER FORK?
-    short num_branches = 0;
-    Instruction* term = el->getTerminator();
-    if (auto* br = dyn_cast<BranchInst>(term)) {
-        
-        if (br->getNumSuccessors() == 1) {
-            // NON è l'inizio di un altro fork, accodo e termino qui
-            enqueueBlock(br->getSuccessor(0));
-            return;
-        } else {
-            for (unsigned int i = 0; i<br->getNumSuccessors(); i++) {
-                auto* succ = br->getSuccessor(i);
-
-                // il successore non esce dal loop corrente
-                if (isNotBreakLoopKeyword(el, succ)) {
-                    enqueueBlock(br->getSuccessor(i));
-                    num_branches++;
-                } else {
-                    // il successore esce dal loop corrente?
-                    // il fork diventa InterLoop (ne basta uno), non accodo il blocco (sarà analizzato con i loop exit)
-                    //TODO: break dentro fork innestati
-
-                    exit->setType(BlockTypology::InterLoopFork);
-                }
-            }
-        }
-    } else if (auto* sw = dyn_cast<SwitchInst>(term)) {
-        
-        for (unsigned int i = 1; i <= sw->getNumCases(); i++) {
-            enqueueBlock(br->getSuccessor(i));
-            num_branches++;
-        }
-
-        //last op is default
-        enqueueBlock(br->getSuccessor(0));
-        num_branches++;
-    }
-
-    // qui arrivo solo se è l'inizio di un altro fork, quindi cambio il tipo di blocco (l'indicazione precedente del merge non serve più)
-    exit->setNumBranches(num_branches);
-    exit->setType(BlockTypology::StandardFork);
-    emplaceBreadcrumb(AggregationType::Fork, exit);
-}
-
-void FunctionAnalyzer::handleReturnBlock(Block* ret) {
-
-    
-
+    handleBlockTerminator(exit);
 }
 
 void FunctionAnalyzer::enqueueBlock(BasicBlock* B) {
@@ -516,6 +441,19 @@ Block* FunctionAnalyzer::getForkFromBreadcrumb() const {
     return nullptr;
 }
 
+Block* FunctionAnalyzer::getPredecessorForkFromBreadcrumb() const {
+    // scorri breadcrumb a ritroso (LIFO)
+    for (auto it = breadcrumb.rbegin(); it != breadcrumb.rend(); ++it) {
+        BlockAggregation* agg = *it;
+        if (agg->type == AggregationType::Fork) {
+            return agg->ref;
+        } else {
+            return nullptr;
+        }
+    }
+    return nullptr;
+}
+
 Block* FunctionAnalyzer::getBlockByLLVMBasicBlock(BasicBlock* bb) const {
     for (auto const& up : ownedBlocks) {
         if (up->getLLVMBasicBlock() == bb)
@@ -531,4 +469,92 @@ void FunctionAnalyzer::setAnalysisBound() {
     } else {
         IA->setCurrentIterBounds({1,1});
     }
+}
+
+void FunctionAnalyzer::handleBlockTerminator(Block* bb) {
+    BasicBlock* el = bb->getLLVMBasicBlock();
+
+    short num_branches = 0;
+    Instruction* term = el->getTerminator();
+    if (auto* br = dyn_cast<BranchInst>(term)) {
+        
+        if (br->getNumSuccessors() == 1) {
+            // NON è l'inizio di un altro fork, accodo e termino qui
+            enqueueBlock(br->getSuccessor(0));
+            return;
+        } else {
+            for (unsigned int i = 0; i<br->getNumSuccessors(); i++) {
+                auto* succ = br->getSuccessor(i);
+
+                // il successore non esce dal loop corrente
+                if (isNotBreakLoopKeyword(el, succ)) {
+                    enqueueBlock(br->getSuccessor(i));
+                    num_branches++;
+                } else {
+                    // il successore esce dal loop corrente
+                    
+                    Block* predFork = getPredecessorForkFromBreadcrumb();
+                    predFork->setType(BlockTypology::InterLoopFork);
+                }
+            }
+        }
+    } else if (auto* sw = dyn_cast<SwitchInst>(term)) {
+        
+        for (unsigned int i = 1; i <= sw->getNumCases(); i++) {
+            enqueueBlock(br->getSuccessor(i));
+            num_branches++;
+        }
+
+        //last op is default
+        enqueueBlock(br->getSuccessor(0));
+        num_branches++;
+    } else if (auto* ret = dyn_cast<ReturnInst>(term)) {
+        
+        // se siamo immediatamente in un fork rimuovi un branch
+        Block* fork = getPredecessorForkFromBreadcrumb();
+        if (fork) fork->decrRemainingBranches();
+
+        handleReturn(ret);
+        return;
+    }
+
+    // qui arrivo solo se è l'inizio di un altro fork, quindi cambio il tipo di blocco (l'indicazione precedente del merge non serve più)
+    bb->setNumBranches(num_branches);
+    bb->setType(BlockTypology::StandardFork);
+    emplaceBreadcrumb(AggregationType::Fork, bb);
+}
+
+void FunctionAnalyzer::handleReturn(ReturnInst* ret) {
+    Value* retVal = ret->getReturnValue();
+    if (!retVal) return;    //void
+
+    Range retRange;
+    // RETURN AS POINT
+    if (auto *CI = dyn_cast<ConstantInt>(retVal)) {
+        int64_t v = CI->getSExtValue();
+        retRange = Range((float)v, (float)v);
+
+    // PHI NODE
+    } else if (auto *phi = dyn_cast<PHINode>(retVal)) {
+        retRange.min = std::numeric_limits<float>::infinity();
+        retRange.max = -std::numeric_limits<float>::infinity();
+        for (unsigned i = 0, e = phi->getNumIncomingValues(); i < e; ++i) {
+            Value* iv = phi->getIncomingValue(i);
+            if (iv->hasName()) {
+                if (Var* ivVar = scope->lookup(iv->getName().str())) {
+                    retRange.min = std::min(retRange.min, ivVar->range.min);
+                    retRange.max = std::max(retRange.max, ivVar->range.max);
+                }
+            }
+        }
+
+    // SSA Return
+    } else if (retVal->hasName()) {
+        std::string name = retVal->getName().str();
+        if (Var* v = scope->lookup(name)) {
+            retRange = v->range;
+        }
+    }
+
+    scope->addVar("return", retRange);
 }
