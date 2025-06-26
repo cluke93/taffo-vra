@@ -30,7 +30,7 @@ class InstructionAnalyzer {
          */
         void analyzePHINodesLoopHeader(Instruction* I);
 
-        void analyzePhiNodeBranch(PHINode* phi, int i, std::optional<Range>& newRange);
+        void analyzePhiNodeBranch(PHINode* phi, int i);
 
         /**
          * Analyze only binary and unary math expressions which modify ranges on the scope
@@ -60,6 +60,10 @@ class InstructionAnalyzer {
         void handleCmp();
 
         InstructionAnalyzer(std::shared_ptr<RangeHandler> RA): RA(RA) {}
+
+protected:
+
+    std::optional<Range> getConstRange(Value* val);
 
 
     private:

@@ -15,6 +15,9 @@
 
 using namespace llvm;
 
+static constexpr float NEG_INF = -std::numeric_limits<float>::infinity();
+static constexpr float POS_INF =  std::numeric_limits<float>::infinity();
+
 struct Range {
     float min;
     float max;
@@ -53,7 +56,7 @@ class RangeHandler {
     /**
      * Create a new range merging two ranges, no matter fixed property
      */
-    static Range Merge(Range r1, Range r2);
+    static Range Merge(const Range& a, const Range& b);
 
     /**
      * Create new merge as result of sum between two ranges done inside loop

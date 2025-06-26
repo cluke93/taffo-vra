@@ -24,128 +24,98 @@ std::string Scope::formatFloatSmart(float val) const {
     return oss.str();
 }
 
-void Scope::addVar(const std::string& name, Range range) {
-    variables.emplace_back(std::make_unique<Var>(name, range));
+void Scope::addOperand(std::unique_ptr<Operand> op) {
+    operands.push_back(std::move(op));
 }
 
-void Scope::addVar(std::unique_ptr<Var> var) {
-    if (!var) return;
-    
-    for (auto& existingPtr : variables) {
-        Var& existing = *existingPtr;
-        if (existing.name == var->name) {
-            
-            if (!existing.range.isFixed) {
-                enlargeVarRange(existing, var->range);
-            }
-            return;
-        }
-    }
-    variables.emplace_back(std::move(var));
-}
-
-Var* Scope::lookup(const std::string& name) {
-    for (const auto& var : variables) {
-        if (var->name == name)
-            return var.get();
+Operand* Scope::lookup(const std::string& name) {
+    for (const auto& op : operands) {
+        if (op->name == name)
+            return op.get();
     }
     if (parent)
         return parent->lookup(name);
     return nullptr;
 }
 
-std::vector<Var*> Scope::getVariables() {
-    std::vector<Var*> result;
-    for (auto& v : variables) {
+std::vector<Operand*> Scope::getOperands() {
+    std::vector<Operand*> result;
+    for (auto& v : operands) {
         result.push_back(v.get());
     }
     return result;
 }
 
+//TODO: da controllare
 void Scope::mergeWith(Scope* otherScope) {
     if (!otherScope) return;
 
     // Prendiamo tutte le Var* dichiarate (solo locali)
-    auto otherVars = otherScope->getVariables();
-    for (Var* v : otherVars) {
-        // Cerco in this->variables
-        auto it = std::find_if(
-            variables.begin(), variables.end(),
-            [&](const std::unique_ptr<Var>& varPtr){
-                return varPtr->name == v->name;
-            }
-        );
+    // auto otherOperands = otherScope->getOperands();
+    // for (Operand* v : otherOperands) {
+    //     // Cerco in this->variables
+    //     auto it = std::find_if(
+    //         operands.begin(), operands.end(),
+    //         [&](const std::unique_ptr<Operand>& varPtr){
+    //             return varPtr->name == v->name;
+    //         }
+    //     );
 
-        if (it != variables.end()) {
-            // existing var: check if enlargin is needed
+    //     if (it != operands.end()) {
+    //         // existing var: check if enlargin is needed
 
-            Var* existing = it->get();
-            if (!existing->range.isFixed) {
-                existing->range.min = std::min(existing->range.min, v->range.min);
-                existing->range.max = std::max(existing->range.max, v->range.max);
-            }
-        } else {
-            // new var: add it
+    //         Operand* existing = it->get();
+    //         if (!existing->getRange()->isFixed) {
+    //             existing->getRange()->min = std::min(existing->getRange()->min, v->getRange()->min);
+    //             existing->getRange()->max = std::max(existing->getRange()->max, v->getRange()->max);
+    //         }
+    //     } else {
+    //         // new var: add it
 
-            variables.emplace_back(std::make_unique<Var>(v->name, v->range));
-        }
-    }
-}
-
-void Scope::enlargeVarRange(Var& var, const Range& r) {
-    if (var.range.min > r.min) var.range.min = r.min;
-    if (var.range.max < r.max) var.range.max = r.max;
-}
-
-void Scope::prettyPrint(int depth) const {
-    // indentazione con due spazi per livello
-    std::string indent(depth * 2, ' ');
-    errs() << indent << "Scope (level " << depth << ") @" << this
-           << " — vars: " << variables.size() << "\n";
-
-    for (auto const& vp : variables) {
-        const Var& v = *vp;
-        errs() << indent << "  • " << v.name
-               << " [" << formatFloatSmart(v.range.min)
-               << ", "  << formatFloatSmart(v.range.max) << "]";
-        if (v.range.isFixed) errs() << " (fixed)";
-        errs() << "\n";
-    }
-
-    if (parent) {
-        errs() << indent << "  ↑ parent:\n";
-        parent->prettyPrint(depth + 1);
-    }
-}
-
-std::string Scope::toJson() const {
-    std::ostringstream oss;
-    oss << "{";
-    // variabili
-    oss << "\"vars\":[";
-    for (size_t i = 0; i < variables.size(); ++i) {
-        const Var& v = *variables[i];
-        oss << "{"
-            << "\"name\":\""  << v.name << "\","
-            << "\"min\":"    << v.range.min << ","
-            << "\"max\":"    << v.range.max << ","
-            << "\"fixed\":"  << (v.range.isFixed ? "true" : "false")
-            << "}";
-        if (i + 1 < variables.size()) oss << ",";
-    }
-    oss << "]";
-
-    // parent
-    if (parent) {
-        oss << ",\"parent\":" << parent->toJson();
-    } else {
-        oss << ",\"parent\":null";
-    }
-
-    oss << "}";
-    return oss.str();
+    //         operands.emplace_back(std::make_unique<Operand>(v->name, v->range, VarType::Local));
+    //     }
+    // }
 }
 
 void Scope::printJson() const {
     errs() << toJson() << "\n";
+}
+
+bool Operand::tryResolution() {
+    if (isResolvable()) return true;
+
+    std::vector<Range> args;
+    for (Operand* dep : dependencies) {
+        if (!dep->tryResolution())
+            return false;            // se anche una sola fallisce, non risolvo
+        args.push_back(*dep->getRange());
+    }
+
+    // Chiamo la funzione simbolica
+    Range result = call(args);
+
+    // Alloco il risultato nello heap e lo assegno al unique_ptr
+    range = std::make_unique<Range>(result);
+
+    return true;
+}
+
+void Operand::forceResolution() {
+    if (isResolvable()) return;
+
+    std::vector<Range> args;
+    for (Operand* dep : dependencies) {
+        dep->forceResolution();
+        args.push_back(*dep->getRange());
+    }
+
+    // Chiamo la funzione simbolica
+    Range result = call(args);
+
+    // Alloco il risultato nello heap e lo assegno al unique_ptr
+    range = std::make_unique<Range>(result);
+}
+
+void Operand::addDepencendy(Operand* op) {
+    dependencies.push_back(op);
 }

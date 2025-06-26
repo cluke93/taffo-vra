@@ -54,11 +54,15 @@ namespace llvm
 
             if (auto* cInt = llvm::dyn_cast<llvm::ConstantInt>(initializer)) {
                 float val = static_cast<float>(cInt->getSExtValue());
-                global->addVar(name, Range(val, val, true));
+
+                auto op = std::make_unique<Operand>(name, Range(val, val, true), VarType::Local);
+
+                global->addOperand(std::move(op));
 
             } else if (auto* cFP = llvm::dyn_cast<llvm::ConstantFP>(initializer)) {
                 float val = cFP->getValueAPF().convertToFloat();
-                global->addVar(name, Range(val, val, true));
+                auto op = std::make_unique<Operand>(name, Range(val, val, true), VarType::Local);
+                global->addOperand(std::move(op));
 
             } else {
                 // TODO: Gestisci altri tipi se servono (array, struct...)

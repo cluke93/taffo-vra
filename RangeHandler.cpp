@@ -4,8 +4,12 @@
 
 #include "RangeHandler.hpp"
 
-Range RangeHandler::Merge(Range r1, Range r2) {
-    return Range(r1.min < r2.min ? r1.min : r2.min, r1.max > r2.max ? r1.max : r2.max);
+
+
+Range RangeHandler::Merge(const Range& a, const Range& b) {
+    float min = std::min(a.min, b.min);
+    float max = std::max(a.max, b.max);
+    return Range(min, max);
 }
 
 Range RangeHandler::Add(Range r1, Range r2, int minIter, int maxIter) {

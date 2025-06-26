@@ -541,9 +541,9 @@ void FunctionAnalyzer::handleReturn(ReturnInst* ret) {
         for (unsigned i = 0, e = phi->getNumIncomingValues(); i < e; ++i) {
             Value* iv = phi->getIncomingValue(i);
             if (iv->hasName()) {
-                if (Var* ivVar = scope->lookup(iv->getName().str())) {
-                    retRange.min = std::min(retRange.min, ivVar->range.min);
-                    retRange.max = std::max(retRange.max, ivVar->range.max);
+                if (Operand* ivVar = scope->lookup(iv->getName().str())) {
+                    retRange.min = std::min(retRange.min, ivVar->getRange()->min);
+                    retRange.max = std::max(retRange.max, ivVar->getRange()->max);
                 }
             }
         }
@@ -551,10 +551,10 @@ void FunctionAnalyzer::handleReturn(ReturnInst* ret) {
     // SSA Return
     } else if (retVal->hasName()) {
         std::string name = retVal->getName().str();
-        if (Var* v = scope->lookup(name)) {
-            retRange = v->range;
+        if (Operand* v = scope->lookup(name)) {
+            retRange = *v->getRange();
         }
     }
 
-    scope->addVar("return", retRange);
+    scope->addOperand(std::make_unique<Operand>("RETURN", retRange, VarType::Local));
 }
