@@ -15,7 +15,7 @@
 
 using namespace llvm;
 
-enum class VarType { Local, Argument, Constant };
+enum class VarType { Local, Argument, Constant, ArgumentRef, Return };
 
 
 struct Operand {

@@ -110,6 +110,8 @@ public:
         return callArgRanges;
     }
 
+    
+
     FunctionAnalyzer (Function* el, llvm::VRAPass* vra_pass);
 
 protected:
@@ -118,7 +120,9 @@ protected:
 
     void handleReturn(ReturnInst* ret);
 
-
+    std::string makeArgName() {
+        return "arg_" + std::to_string(++argCounter);
+    }
 
 
 private:
@@ -181,6 +185,8 @@ private:
     /// Mappa ogni CallInst ai Range dei suoi argomenti
     std::map<llvm::CallInst*, std::vector<Range>> callArgRanges;
 
+    /// @brief num of argument of this function on scope
+    int argCounter = 0;
 };
 
 #endif

@@ -18,7 +18,14 @@ void FunctionAnalyzer::analyze() {
     Scope* globalScope = getPass()->getGlobalScope();
     scope = std::make_unique<Scope>(globalScope);
 
-    // recuperare gli argomenti col loro range
+    //TODO: predere il range dalle annotazioni o dai parametri passati
+    for (llvm::Argument &Arg : el->args()) {
+        std::string name = Arg.hasName() ? Arg.getName().str() : makeArgName();
+        VarType vtype = Arg.getType()->isPointerTy() ? VarType::ArgumentRef : VarType::Argument;
+        auto argOp = std::make_unique<Operand>(name, nullptr, vtype);
+        scope->addOperand(std::move(argOp));
+    }
+
 
     IA = std::make_shared<InstructionAnalyzer>(std::make_shared<RangeHandler>());
 
