@@ -1,6 +1,10 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/Debug.h>
 
+#include "llvm/Analysis/ScalarEvolution.h"
+#include "llvm/Analysis/LoopInfo.h"
+#include "llvm/Analysis/ScalarEvolutionExpressions.h"
+
 #include "VRAPass.h"
 
 #define DEBUG_TYPE "vra"
@@ -8,29 +12,59 @@
 namespace llvm
 {
 
-    PreservedAnalyses VRAPass::run(llvm::Module& M, ModuleAnalysisManager& AM) {
+    PreservedAnalyses VRAPass::run(llvm::Module &M, ModuleAnalysisManager &AM)
+    {
         this->M = &M;
         MAM = &AM;
 
-        // forse un super global scope
-        setGlobalScope();
+        // Prendo il FunctionAnalysisManager dal ModuleAnalysisManager
+        this->FAM = &AM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
 
         processModule();
 
         return PreservedAnalyses::all();
     }
 
-    void VRAPass::processModule() {
+    void VRAPass::processModule()
+    {
         bool FoundVisitableFunction = false;
-        for (Function& F : M->functions()) {
+        for (Function &F : M->functions())
+        {
             // if (!F.empty() && (PropagateAll || TaffoInfo::getInstance().isStartingPoint(F))) {
 
-                FunctionAnalyzer FAN = FunctionAnalyzer(&F, this);
+            if (F.getName() != "main")
+                continue;
 
-                FAN.analyze();
-                emplaceFunctionScope(FAN.getName(), FAN.getScope());
+            // 1) predispongo lo scope
+            scope_ = std::make_unique<Scope>(nullptr);
 
-                FoundVisitableFunction = true;
+            // 2) preparo l'analyzer
+            RangeDataflowAnalyzer solver(F);
+
+            // 3) prendo LoopInfo e ScalarEvolution per F
+            auto &LI = FAM->getResult<LoopAnalysis>(F);
+            auto &SE = FAM->getResult<ScalarEvolutionAnalysis>(F);
+
+            // 4) eseguo il run “SCEV-aware”
+            solver.runWithSCEV(F, LI, SE);
+
+            // 5) popolo lo scope e stampo
+            solver.populateScope(scope_.get());
+            scope_->dump();
+
+            // 6) stampo anche il range di ritorno
+            for (BasicBlock &B : F)
+            {
+                if (auto *RI = dyn_cast<ReturnInst>(B.getTerminator()))
+                {
+                    if (Value *RV = RI->getReturnValue())
+                    {
+                        Range r = solver.getValueRange(RV);
+                        errs() << "Var " << F.getName() << " with range ( "
+                                << r.min << ", " << r.max << ")\n";
+                    }
+                }
+            }
             // }
         }
 
@@ -38,58 +72,10 @@ namespace llvm
             LLVM_DEBUG(dbgs() << DEBUG_HEAD << " No visitable functions found.\n");
     }
 
-    void VRAPass::setGlobalScope() {
-
-        auto global = std::make_unique<Scope>(nullptr);
-
-        for (auto& gv : M->globals()) {
-            std::string name = gv.getName().str();
-
-            if (!gv.hasInitializer()) {
-                //TODO: Se non ha valore iniziale, imposta range "indefinito"
-                continue;
-            }
-
-            auto* initializer = gv.getInitializer();
-
-            if (auto* cInt = llvm::dyn_cast<llvm::ConstantInt>(initializer)) {
-                float val = static_cast<float>(cInt->getSExtValue());
-
-                auto op = std::make_unique<Operand>(name, Range(val, val, true), VarType::Local);
-
-                global->addOperand(std::move(op));
-
-            } else if (auto* cFP = llvm::dyn_cast<llvm::ConstantFP>(initializer)) {
-                float val = cFP->getValueAPF().convertToFloat();
-                auto op = std::make_unique<Operand>(name, Range(val, val, true), VarType::Local);
-                global->addOperand(std::move(op));
-
-            } else {
-                // TODO: Gestisci altri tipi se servono (array, struct...)
-            }
-
-        }
-
-        globalScope = std::move(global);
+    ModuleAnalysisManager *VRAPass::getMAM()
+    {
+        return MAM;
     }
-    
-}
-
-Scope* VRAPass::getGlobalScope() {
-    return globalScope.get();
-}
-
-ModuleAnalysisManager* VRAPass::getMAM() {
-    return MAM;
-}
-
-void VRAPass::emplaceFunctionScope(const std::string& fname, Scope* fscope) {
-    functionScopes.emplace(fname, fscope);
-}
-
-Scope* VRAPass::getFunctionScope(const std::string& fname) const {
-    auto it = functionScopes.find(fname);
-    return it == functionScopes.end() ? nullptr : it->second;
 }
 
 #undef DEBUG_TYPE
